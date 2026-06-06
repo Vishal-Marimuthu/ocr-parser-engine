@@ -260,11 +260,11 @@ function App() {
                         </div>
                         <div>
                           <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Vendor Name</p>
-                          <p className="text-lg font-bold text-white mt-0.5">{extractedData.vendor_name || 'N/A'}</p>
+                          <p className="text-lg font-bold text-white mt-0.5">{extractedData?.vendor_name || 'N/A'}</p>
                         </div>
                       </div>
                       <button 
-                        onClick={() => copyToClipboard(extractedData.vendor_name)}
+                        onClick={() => copyToClipboard(extractedData?.vendor_name)}
                         className="p-2 text-slate-500 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
                         title="Copy Vendor Name"
                       >
@@ -282,11 +282,11 @@ function App() {
                         </div>
                         <div>
                           <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Expense Category</p>
-                          <p className="text-lg font-bold text-white mt-0.5">{extractedData.expense_category || 'N/A'}</p>
+                          <p className="text-lg font-bold text-white mt-0.5">{extractedData?.expense_category || 'N/A'}</p>
                         </div>
                       </div>
                       <button 
-                        onClick={() => copyToClipboard(extractedData.expense_category)}
+                        onClick={() => copyToClipboard(extractedData?.expense_category)}
                         className="p-2 text-slate-500 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
                         title="Copy Expense Category"
                       >
@@ -304,11 +304,11 @@ function App() {
                         </div>
                         <div>
                           <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Invoice Number</p>
-                          <p className="text-lg font-bold text-white mt-0.5">{extractedData.invoice_number}</p>
+                          <p className="text-lg font-bold text-white mt-0.5">{extractedData?.invoice_number || 'N/A'}</p>
                         </div>
                       </div>
                       <button 
-                        onClick={() => copyToClipboard(extractedData.invoice_number)}
+                        onClick={() => copyToClipboard(extractedData?.invoice_number)}
                         className="p-2 text-slate-500 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
                         title="Copy Invoice Number"
                       >
@@ -326,11 +326,11 @@ function App() {
                         </div>
                         <div>
                           <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Date</p>
-                          <p className="text-lg font-bold text-white mt-0.5">{extractedData.date}</p>
+                          <p className="text-lg font-bold text-white mt-0.5">{extractedData?.date || 'N/A'}</p>
                         </div>
                       </div>
                       <button 
-                        onClick={() => copyToClipboard(extractedData.date)}
+                        onClick={() => copyToClipboard(extractedData?.date)}
                         className="p-2 text-slate-500 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
                         title="Copy Date"
                       >
@@ -348,11 +348,11 @@ function App() {
                         </div>
                         <div>
                           <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Total Amount</p>
-                          <p className="text-xl font-extrabold text-emerald-400 mt-0.5">{extractedData.total_amount !== "N/A" && !extractedData.total_amount.startsWith('$') ? `$${extractedData.total_amount}` : extractedData.total_amount}</p>
+                          <p className="text-xl font-extrabold text-emerald-400 mt-0.5">{extractedData?.total_amount && extractedData.total_amount !== "N/A" && !extractedData.total_amount.startsWith('$') ? `$${extractedData.total_amount}` : (extractedData?.total_amount || 'N/A')}</p>
                         </div>
                       </div>
                       <button 
-                        onClick={() => copyToClipboard(extractedData.total_amount)}
+                        onClick={() => copyToClipboard(extractedData?.total_amount)}
                         className="p-2 text-slate-500 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
                         title="Copy Total Amount"
                       >
@@ -365,7 +365,7 @@ function App() {
                       <div className="flex justify-between items-center">
                         <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Full Extracted Text</p>
                         <button 
-                          onClick={() => copyToClipboard(extractedData.raw_text)}
+                          onClick={() => copyToClipboard(extractedData?.raw_text)}
                           className="text-xs text-slate-400 hover:text-white flex items-center transition-colors"
                         >
                           <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
@@ -373,7 +373,7 @@ function App() {
                         </button>
                       </div>
                       <p className="text-sm text-slate-300 font-mono bg-slate-950/50 p-3 rounded-lg border border-slate-900 whitespace-pre-wrap max-h-64 overflow-y-auto custom-scrollbar">
-                        {extractedData.raw_text}
+                        {extractedData?.raw_text || ''}
                       </p>
                     </div>
                   </div>
