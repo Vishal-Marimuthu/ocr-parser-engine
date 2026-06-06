@@ -2,11 +2,18 @@ import os
 import io
 import re
 import cv2
+import json
 import numpy as np
 import pytesseract
 import fitz
+import requests
+import toons
+from dotenv import load_dotenv
 from fastapi import FastAPI, File, UploadFile, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Resilient Tesseract Configuration
 tesseract_paths = [
@@ -29,46 +36,77 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def parse_document_data(text: str) -> dict:
-    invoice_patterns = [
-        re.compile(r'(?:invoice\s*(?:no|number|#)?|inv\s*#?)\s*[:.-]?\s*([A-Z0-9-]+)', re.IGNORECASE),
-        re.compile(r'#\s*([A-Z0-9-]+)', re.IGNORECASE)
-    ]
-    date_patterns = [
-        re.compile(r'(?:date)\s*[:.-]?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2}|[A-Za-z]+ \d{1,2},? \d{4})', re.IGNORECASE)
-    ]
-    amount_patterns = [
-        re.compile(r'(?:total\s*(?:amount|due)?|amount\s*due|balance\s*due)\s*[:.-]?\s*(?:\$|usd|eur|£)?\s*([0-9,]+\.\d{2})', re.IGNORECASE),
-        re.compile(r'(?:\$|usd|eur|£)\s*([0-9,]+\.\d{2})', re.IGNORECASE)
-    ]
-    
-    invoice_no = "N/A"
-    for pattern in invoice_patterns:
-        match = pattern.search(text)
-        if match:
-            invoice_no = match.group(1).strip()
-            break
-            
-    doc_date = "N/A"
-    for pattern in date_patterns:
-        match = pattern.search(text)
-        if match:
-            doc_date = match.group(1).strip()
-            break
-            
-    total_amount = "N/A"
-    for pattern in amount_patterns:
-        match = pattern.search(text)
-        if match:
-            total_amount = match.group(1).strip()
-            break
-            
-    return {
-        "invoice_number": invoice_no,
-        "date": doc_date,
-        "total_amount": total_amount,
-        "raw_text": text.strip()
+def parse_document_data_llm(text: str) -> dict:
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    if not api_key:
+        print("Warning: OPENROUTER_API_KEY is not set.")
+        return {
+            "invoice_number": "N/A",
+            "date": "N/A",
+            "total_amount": "N/A",
+            "vendor_name": "N/A",
+            "expense_category": "N/A"
+        }
+        
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://opticforge.netlify.app",
+        "X-Title": "OpticForge OCR Engine"
     }
+    
+    prompt = f"""You are an expert document parser. Parse the following OCR text extracted from an invoice or receipt.
+Extract the following fields and return them in a strict JSON format:
+- invoice_number (string, default "N/A" if not found)
+- date (string, default "N/A" if not found)
+- total_amount (string, default "N/A" if not found)
+- vendor_name (string, default "N/A" if not found)
+- expense_category (string, default "N/A" if not found. Classify into one of these categories: Meals/Entertainment, Office Supplies, Travel, Software/SaaS, Utilities, Marketing, Miscellaneous)
+
+Do not include any markdown formatting (like ```json ... ```) or extra explanation. Return ONLY the raw JSON string.
+
+OCR Text:
+{text}
+"""
+    
+    payload = {
+        "model": "meta-llama/llama-3-8b-instruct:free",
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
+        "response_format": {"type": "json_object"}
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=20)
+        response.raise_for_status()
+        res_data = response.json()
+        content = res_data["choices"][0]["message"]["content"]
+        
+        # Clean potential markdown wrapping
+        content = content.strip()
+        if content.startswith("```"):
+            content = re.sub(r"^```(?:json)?", "", content, flags=re.IGNORECASE).strip()
+            content = re.sub(r"```$", "", content).strip()
+            
+        parsed = json.loads(content)
+        return {
+            "invoice_number": parsed.get("invoice_number", "N/A"),
+            "date": parsed.get("date", "N/A"),
+            "total_amount": parsed.get("total_amount", "N/A"),
+            "vendor_name": parsed.get("vendor_name", "N/A"),
+            "expense_category": parsed.get("expense_category", "N/A")
+        }
+    except Exception as e:
+        print(f"Error parsing document with LLM: {e}")
+        return {
+            "invoice_number": "N/A",
+            "date": "N/A",
+            "total_amount": "N/A",
+            "vendor_name": "N/A",
+            "expense_category": "N/A"
+        }
 
 @app.post("/api/extract")
 async def extract_document(file: UploadFile = File(...)):
@@ -128,5 +166,11 @@ async def extract_document(file: UploadFile = File(...)):
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"OCR Error: {str(e)}")
         
-    extracted_data = parse_document_data(text)
-    return extracted_data
+    extracted_data = parse_document_data_llm(text)
+    extracted_data["raw_text"] = text.strip()
+    
+    # Serialize to TOON format
+    toon_data = toons.dumps(extracted_data)
+    
+    return Response(content=toon_data, media_type="text/toon")
+

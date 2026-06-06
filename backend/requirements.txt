@@ -5,3 +5,5 @@ opencv-python-headless
 pytesseract
 toons
 pymupdf
+requests
+python-dotenv

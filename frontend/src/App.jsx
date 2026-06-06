@@ -5,6 +5,7 @@ function App() {
   const [preview, setPreview] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [extractedData, setExtractedData] = useState(null);
+  const [toonData, setToonData] = useState(null);
   const [viewMode, setViewMode] = useState('structured');
   const [error, setError] = useState(null);
   
@@ -61,7 +62,30 @@ function App() {
       setPreview(null);
     }
     setExtractedData(null);
+    setToonData(null);
     setError(null);
+  };
+
+  const parseToon = (toonStr) => {
+    const result = {};
+    if (!toonStr) return result;
+    const lines = toonStr.split('\n');
+    for (const line of lines) {
+      const index = line.indexOf(':');
+      if (index !== -1) {
+        const key = line.substring(0, index).trim();
+        let value = line.substring(index + 1).trim();
+        if (value.startsWith('"') && value.endsWith('"')) {
+          try {
+            value = JSON.parse(value);
+          } catch (e) {
+            value = value.slice(1, -1).replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+          }
+        }
+        result[key] = value;
+      }
+    }
+    return result;
   };
 
   const handleSubmit = async () => {
@@ -84,8 +108,10 @@ function App() {
         throw new Error(`Server responded with ${response.status}`);
       }
 
-      const data = await response.json();
-      setExtractedData(data);
+      const textData = await response.text();
+      setToonData(textData);
+      const parsedData = parseToon(textData);
+      setExtractedData(parsedData);
     } catch (err) {
       setError(err.message || 'An error occurred during OCR processing.');
     } finally {
@@ -212,25 +238,68 @@ function App() {
                     Structured
                   </button>
                   <button
-                    onClick={() => setViewMode('json')}
-                    className={`px-3 py-1.5 rounded-md transition-all ${viewMode === 'json' ? 'bg-blue-500 text-white font-medium' : 'text-slate-400 hover:text-white'}`}
+                    onClick={() => setViewMode('toon')}
+                    className={`px-3 py-1.5 rounded-md transition-all ${viewMode === 'toon' ? 'bg-blue-500 text-white font-medium' : 'text-slate-400 hover:text-white'}`}
                   >
-                    Raw JSON
+                    Raw TOON
                   </button>
                 </div>
               )}
             </div>
-            
             <div className="flex-grow bg-slate-950 rounded-xl border border-slate-700 p-6 overflow-hidden flex flex-col relative min-h-[300px]">
               {extractedData ? (
                 viewMode === 'structured' ? (
-                  <div className="space-y-6 overflow-y-auto max-h-[450px] custom-scrollbar pr-1">
+                  <div className="space-y-4 overflow-y-auto max-h-[450px] custom-scrollbar pr-1">
+                    {/* Vendor Name Card */}
+                    <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex items-center justify-between hover:border-slate-700 transition-all">
+                      <div className="flex items-center space-x-4">
+                        <div className="w-10 h-10 rounded-lg bg-orange-500/10 flex items-center justify-center text-orange-400">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                          </svg>
+                        </div>
+                        <div>
+                          <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Vendor Name</p>
+                          <p className="text-lg font-bold text-white mt-0.5">{extractedData.vendor_name || 'N/A'}</p>
+                        </div>
+                      </div>
+                      <button 
+                        onClick={() => copyToClipboard(extractedData.vendor_name)}
+                        className="p-2 text-slate-500 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
+                        title="Copy Vendor Name"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                      </button>
+                    </div>
+
+                    {/* Expense Category Card */}
+                    <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex items-center justify-between hover:border-slate-700 transition-all">
+                      <div className="flex items-center space-x-4">
+                        <div className="w-10 h-10 rounded-lg bg-pink-500/10 flex items-center justify-center text-pink-400">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Expense Category</p>
+                          <p className="text-lg font-bold text-white mt-0.5">{extractedData.expense_category || 'N/A'}</p>
+                        </div>
+                      </div>
+                      <button 
+                        onClick={() => copyToClipboard(extractedData.expense_category)}
+                        className="p-2 text-slate-500 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
+                        title="Copy Expense Category"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                      </button>
+                    </div>
+
                     {/* Invoice Number Card */}
                     <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex items-center justify-between hover:border-slate-700 transition-all">
                       <div className="flex items-center space-x-4">
                         <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400">
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                           </svg>
                         </div>
                         <div>
@@ -252,7 +321,7 @@ function App() {
                       <div className="flex items-center space-x-4">
                         <div className="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-400">
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                           </svg>
                         </div>
                         <div>
@@ -311,17 +380,17 @@ function App() {
                 ) : (
                   <div className="flex flex-col h-full">
                     <div className="flex justify-between items-center mb-3 border-b border-slate-800 pb-2">
-                      <span className="text-xs text-slate-500 font-mono">Format: application/json</span>
+                      <span className="text-xs text-slate-500 font-mono">Format: text/toon</span>
                       <button 
-                        onClick={() => copyToClipboard(JSON.stringify(extractedData, null, 2))}
+                        onClick={() => copyToClipboard(toonData)}
                         className="text-xs text-slate-400 hover:text-white transition-colors flex items-center"
                       >
                         <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                        Copy JSON
+                        Copy TOON
                       </button>
                     </div>
                     <pre className="text-blue-400 font-mono text-sm overflow-auto whitespace-pre-wrap flex-grow custom-scrollbar">
-                      {JSON.stringify(extractedData, null, 2)}
+                      {toonData}
                     </pre>
                   </div>
                 )
