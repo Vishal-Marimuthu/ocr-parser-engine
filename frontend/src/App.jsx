@@ -291,20 +291,20 @@ function App() {
                       </button>
                     </div>
 
-                    {/* Raw Text Preview */}
+                    {/* Full Extracted Text */}
                     <div className="bg-slate-900/30 border border-slate-800 rounded-xl p-4 flex flex-col space-y-2">
                       <div className="flex justify-between items-center">
-                        <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">OCR Text Preview</p>
+                        <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Full Extracted Text</p>
                         <button 
-                          onClick={() => copyToClipboard(extractedData.raw_text_preview)}
+                          onClick={() => copyToClipboard(extractedData.raw_text)}
                           className="text-xs text-slate-400 hover:text-white flex items-center transition-colors"
                         >
                           <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                           Copy raw text
                         </button>
                       </div>
-                      <p className="text-sm text-slate-300 font-mono bg-slate-950/50 p-3 rounded-lg border border-slate-900 whitespace-pre-wrap max-h-32 overflow-y-auto custom-scrollbar">
-                        {extractedData.raw_text_preview}
+                      <p className="text-sm text-slate-300 font-mono bg-slate-950/50 p-3 rounded-lg border border-slate-900 whitespace-pre-wrap max-h-64 overflow-y-auto custom-scrollbar">
+                        {extractedData.raw_text}
                       </p>
                     </div>
                   </div>

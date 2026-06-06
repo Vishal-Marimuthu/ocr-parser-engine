@@ -67,7 +67,7 @@ def parse_document_data(text: str) -> dict:
         "invoice_number": invoice_no,
         "date": doc_date,
         "total_amount": total_amount,
-        "raw_text_preview": text[:500].strip() + ("..." if len(text) > 500 else "")
+        "raw_text": text.strip()
     }
 
 @app.post("/api/extract")
