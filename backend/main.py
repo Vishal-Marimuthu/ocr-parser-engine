@@ -4,6 +4,7 @@ import re
 import cv2
 import numpy as np
 import pytesseract
+import fitz
 from fastapi import FastAPI, File, UploadFile, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -73,27 +74,59 @@ def parse_document_data(text: str) -> dict:
 async def extract_document(file: UploadFile = File(...)):
     contents = await file.read()
     
-    # Preprocessing Pipeline
-    nparr = np.frombuffer(contents, np.uint8)
-    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-    
-    if img is None:
-        raise HTTPException(status_code=400, detail="Invalid image file")
+    if file.content_type == "application/pdf" or file.filename.endswith(".pdf"):
+        try:
+            doc = fitz.open(stream=contents, filetype="pdf")
+            text = ""
+            for page in doc:
+                # 1. Try direct text extraction (digital PDF)
+                page_text = page.get_text()
+                if page_text.strip():
+                    text += page_text + "\n"
+                else:
+                    # 2. Scanned PDF: Render page to image and run OCR
+                    pix = page.get_pixmap(dpi=150)
+                    img_data = pix.tobytes("png")
+                    nparr = np.frombuffer(img_data, np.uint8)
+                    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                    
+                    if img is not None:
+                        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                        # Resize to improve OCR accuracy
+                        gray = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+                        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                        page_text = pytesseract.image_to_string(thresh)
+                        text += page_text + "\n"
+            
+            if not text.strip():
+                raise HTTPException(status_code=400, detail="Could not extract any text from the PDF.")
+                
+        except Exception as e:
+            if isinstance(e, HTTPException):
+                raise e
+            raise HTTPException(status_code=500, detail=f"PDF Processing Error: {str(e)}")
+    else:
+        # Preprocessing Pipeline for standard images
+        nparr = np.frombuffer(contents, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         
-    # 1. Grayscale
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    
-    # 2. Resize to improve OCR accuracy on smaller text
-    gray = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-    
-    # 3. Otsu's Thresholding
-    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    
-    # Tesseract OCR
-    try:
-        text = pytesseract.image_to_string(thresh)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"OCR Error: {str(e)}")
+        if img is None:
+            raise HTTPException(status_code=400, detail="Invalid image file")
+            
+        # 1. Grayscale
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        
+        # 2. Resize to improve OCR accuracy on smaller text
+        gray = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+        
+        # 3. Otsu's Thresholding
+        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        
+        # Tesseract OCR
+        try:
+            text = pytesseract.image_to_string(thresh)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"OCR Error: {str(e)}")
         
     extracted_data = parse_document_data(text)
     return extracted_data

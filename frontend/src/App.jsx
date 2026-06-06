@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
 function App() {
   const [file, setFile] = useState(null);
@@ -9,6 +9,28 @@ function App() {
   const [error, setError] = useState(null);
   
   const fileInputRef = useRef(null);
+
+  // Clipboard Paste Handler
+  useEffect(() => {
+    const handlePaste = (e) => {
+      const items = e.clipboardData?.items;
+      if (items) {
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].type.indexOf('image') !== -1) {
+            const blob = items[i].getAsFile();
+            // Create a pseudo file from the clipboard blob
+            const pastedFile = new File([blob], `clipboard_image_${Date.now()}.png`, { type: blob.type });
+            processFile(pastedFile);
+            break;
+          }
+        }
+      }
+    };
+    window.addEventListener('paste', handlePaste);
+    return () => {
+      window.removeEventListener('paste', handlePaste);
+    };
+  }, []);
 
   const handleDragOver = (e) => {
     e.preventDefault();
@@ -28,12 +50,16 @@ function App() {
   };
 
   const processFile = (selectedFile) => {
-    if (!selectedFile.type.startsWith('image/')) {
-      setError('Please upload an image file.');
+    if (!selectedFile.type.startsWith('image/') && selectedFile.type !== 'application/pdf') {
+      setError('Please upload an image or a PDF file.');
       return;
     }
     setFile(selectedFile);
-    setPreview(URL.createObjectURL(selectedFile));
+    if (selectedFile.type.startsWith('image/')) {
+      setPreview(URL.createObjectURL(selectedFile));
+    } else {
+      setPreview(null);
+    }
     setExtractedData(null);
     setError(null);
   };
@@ -80,7 +106,7 @@ function App() {
             Intelligent Document OCR
           </h1>
           <p className="text-slate-400 text-lg">
-            Upload an invoice or receipt to extract structured data using AI & Computer Vision.
+            Upload an invoice or receipt (Image or PDF) to extract structured data.
           </p>
         </header>
 
@@ -94,20 +120,31 @@ function App() {
               onDrop={handleDrop}
               onClick={() => fileInputRef.current.click()}
               className={`border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-all duration-300 flex flex-col items-center justify-center min-h-[300px]
-                ${preview ? 'border-purple-500 bg-slate-800/50' : 'border-slate-600 hover:border-blue-400 hover:bg-slate-800/80'}`}
+                ${file ? 'border-purple-500 bg-slate-800/50' : 'border-slate-600 hover:border-blue-400 hover:bg-slate-800/80'}`}
             >
               <input 
                 type="file" 
                 ref={fileInputRef}
                 onChange={handleFileChange}
-                accept="image/*"
+                accept="image/*,application/pdf"
                 className="hidden"
               />
               
-              {preview ? (
+              {file && file.type === 'application/pdf' ? (
+                <div className="relative w-full h-full flex flex-col items-center justify-center p-4">
+                  <div className="w-16 h-16 bg-red-500/10 rounded-2xl flex items-center justify-center text-red-400 mb-3 border border-red-500/20">
+                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <p className="text-lg font-semibold text-slate-200 truncate max-w-xs">{file.name}</p>
+                  <p className="text-xs text-slate-500 mt-1">{(file.size / 1024 / 1024).toFixed(2)} MB • PDF Document</p>
+                  <p className="text-xs text-slate-400 mt-4">Click, drag, or paste another file to change</p>
+                </div>
+              ) : preview ? (
                 <div className="relative w-full h-full flex flex-col items-center">
                   <img src={preview} alt="Document Preview" className="max-h-64 object-contain mb-4 rounded shadow-lg" />
-                  <p className="text-sm text-slate-400">Click or drag to change image</p>
+                  <p className="text-sm text-slate-400">Click, drag, or press Ctrl+V to change image</p>
                 </div>
               ) : (
                 <>
@@ -117,7 +154,8 @@ function App() {
                     </svg>
                   </div>
                   <p className="text-lg font-medium text-slate-200">Drag & drop your document here</p>
-                  <p className="text-sm text-slate-500 mt-2">Supports JPG, PNG</p>
+                  <p className="text-sm text-slate-400 mt-1">Or press **Ctrl+V** to paste copied images</p>
+                  <p className="text-xs text-slate-500 mt-2">Supports JPG, PNG, PDF</p>
                 </>
               )}
             </div>
