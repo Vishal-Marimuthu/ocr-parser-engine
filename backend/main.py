@@ -4,8 +4,7 @@ import re
 import cv2
 import numpy as np
 import pytesseract
-import toons
-from fastapi import FastAPI, File, UploadFile, Response
+from fastapi import FastAPI, File, UploadFile, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 # Resilient Tesseract Configuration
@@ -79,7 +78,7 @@ async def extract_document(file: UploadFile = File(...)):
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     
     if img is None:
-        return Response(content=toons.dumps({"error": "Invalid image file"}), status_code=400, media_type="text/toon")
+        raise HTTPException(status_code=400, detail="Invalid image file")
         
     # 1. Grayscale
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -94,15 +93,7 @@ async def extract_document(file: UploadFile = File(...)):
     try:
         text = pytesseract.image_to_string(thresh)
     except Exception as e:
-        return Response(
-            content=toons.dumps({"error": f"OCR Error: {str(e)}"}), 
-            status_code=500, 
-            media_type="text/toon"
-        )
+        raise HTTPException(status_code=500, detail=f"OCR Error: {str(e)}")
         
     extracted_data = parse_document_data(text)
-    
-    # Serialize to TOON format
-    toon_data = toons.dumps(extracted_data)
-    
-    return Response(content=toon_data, media_type="text/toon")
+    return extracted_data
