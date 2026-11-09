@@ -3,7 +3,9 @@ uvicorn
 python-multipart
 opencv-python-headless
 pytesseract
-toons
 pymupdf
-requests
+requests>=2.31.0
+httpx>=0.25.0
+tenacity>=8.2.0
 python-dotenv
+pydantic>=2

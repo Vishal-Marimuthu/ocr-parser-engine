@@ -1,412 +1,384 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AlertTriangle, FileText, Moon, Sun, UploadCloud } from 'lucide-react';
+
+const fieldLabels = {
+  vendor_name: 'Vendor name',
+  invoice_number: 'Invoice number',
+  date: 'Date',
+  total_amount: 'Invoice-declared total',
+  expense_category: 'Expense category',
+  taxable_amount: 'Taxable value (after discounts)',
+  discount_amount: 'Discount (informational)',
+  additional_charges: 'Additional charges',
+};
 
 function App() {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [extractedData, setExtractedData] = useState(null);
-  const [toonData, setToonData] = useState(null);
-  const [viewMode, setViewMode] = useState('structured');
+  const [response, setResponse] = useState(null);
   const [error, setError] = useState(null);
-  
+  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
   const fileInputRef = useRef(null);
 
-  // Clipboard Paste Handler
-  useEffect(() => {
-    const handlePaste = (e) => {
-      const items = e.clipboardData?.items;
-      if (items) {
-        for (let i = 0; i < items.length; i++) {
-          if (items[i].type.indexOf('image') !== -1) {
-            const blob = items[i].getAsFile();
-            // Create a pseudo file from the clipboard blob
-            const pastedFile = new File([blob], `clipboard_image_${Date.now()}.png`, { type: blob.type });
-            processFile(pastedFile);
-            break;
-          }
-        }
-      }
-    };
-    window.addEventListener('paste', handlePaste);
-    return () => {
-      window.removeEventListener('paste', handlePaste);
-    };
-  }, []);
-
-  const handleDragOver = (e) => {
-    e.preventDefault();
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      processFile(e.dataTransfer.files[0]);
-    }
-  };
-
-  const handleFileChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      processFile(e.target.files[0]);
-    }
-  };
-
-  const processFile = (selectedFile) => {
+  const processFile = useCallback((selectedFile) => {
     if (!selectedFile.type.startsWith('image/') && selectedFile.type !== 'application/pdf') {
       setError('Please upload an image or a PDF file.');
       return;
     }
-    setFile(selectedFile);
-    if (selectedFile.type.startsWith('image/')) {
-      setPreview(URL.createObjectURL(selectedFile));
-    } else {
-      setPreview(null);
-    }
-    setExtractedData(null);
-    setToonData(null);
-    setError(null);
-  };
 
-  const parseToon = (toonStr) => {
-    const result = {};
-    if (!toonStr) return result;
-    const lines = toonStr.split('\n');
-    for (const line of lines) {
-      const index = line.indexOf(':');
-      if (index !== -1) {
-        const key = line.substring(0, index).trim();
-        let value = line.substring(index + 1).trim();
-        if (value.startsWith('"') && value.endsWith('"')) {
-          try {
-            value = JSON.parse(value);
-          } catch (e) {
-            value = value.slice(1, -1).replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-          }
-        }
-        result[key] = value;
+    setFile(selectedFile);
+    setPreview(selectedFile.type.startsWith('image/') ? URL.createObjectURL(selectedFile) : null);
+    setResponse(null);
+    setError(null);
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  useEffect(() => {
+    const handlePaste = (event) => {
+      const image = Array.from(event.clipboardData?.items || [])
+        .find((item) => item.type.startsWith('image/'))
+        ?.getAsFile();
+      if (image) {
+        processFile(new File([image], `clipboard_image_${Date.now()}.png`, { type: image.type }));
       }
-    }
-    return result;
-  };
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [processFile]);
 
   const handleSubmit = async () => {
     if (!file) return;
 
     setIsLoading(true);
     setError(null);
-    
+    setResponse(null);
+
     const formData = new FormData();
     formData.append('file', file);
 
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-      const response = await fetch(`${apiUrl}/api/extract`, {
+      const res = await fetch(`${apiUrl}/api/extract`, {
         method: 'POST',
         body: formData,
       });
+      const result = await res.json();
 
-      if (!response.ok) {
-        throw new Error(`Server responded with ${response.status}`);
+      if (!res.ok) {
+        const detail = result.detail;
+        throw new Error(
+          typeof detail === 'string'
+            ? detail
+            : detail?.message || `Server responded with ${res.status}`,
+        );
       }
 
-      const textData = await response.text();
-      setToonData(textData);
-      const parsedData = parseToon(textData);
-      setExtractedData(parsedData);
+      setResponse(result);
     } catch (err) {
-      setError(err.message || 'An error occurred during OCR processing.');
+      setError(err.message || 'An error occurred during document processing.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const copyToClipboard = (text) => {
-    if (!text) return;
-    navigator.clipboard.writeText(text);
-  };
-
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 p-8 font-sans">
-      <div className="max-w-6xl mx-auto">
-        <header className="mb-10 text-center">
-          <h1 className="text-4xl md:text-5xl font-extrabold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent mb-4">
-            Intelligent Document OCR
-          </h1>
-          <p className="text-slate-400 text-lg">
-            Upload an invoice or receipt (Image or PDF) to extract structured data.
-          </p>
+    <div className="min-h-screen bg-primary text-primary font-sans transition-colors duration-300">
+      <div className="max-w-7xl mx-auto p-4 sm:p-8">
+        <header className="flex justify-between items-center mb-8 pb-4 border-b border-themed">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-accent rounded-lg flex items-center justify-center text-white">
+              <FileText className="w-6 h-6" />
+            </div>
+            <h1 className="text-2xl font-bold tracking-tight">
+              OpticForge <span className="text-accent font-black">AI</span>
+            </h1>
+          </div>
+          <button
+            onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+            className="p-2 rounded-full bg-secondary hover:bg-tertiary transition-colors border border-themed text-secondary"
+            title="Toggle theme"
+            aria-label="Toggle theme"
+          >
+            {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+          </button>
         </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Upload Section */}
-          <div className="bg-slate-800 rounded-2xl p-6 shadow-xl border border-slate-700">
-            <h2 className="text-2xl font-semibold mb-4 text-white">Upload Document</h2>
-            
-            <div 
-              onDragOver={handleDragOver}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current.click()}
-              className={`border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-all duration-300 flex flex-col items-center justify-center min-h-[300px]
-                ${file ? 'border-purple-500 bg-slate-800/50' : 'border-slate-600 hover:border-blue-400 hover:bg-slate-800/80'}`}
+        <main className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          <section className="lg:col-span-4 bg-secondary rounded-2xl p-6 border border-themed shadow-sm">
+            <h2 className="text-lg font-semibold mb-4 text-primary">Upload document</h2>
+            <div
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => {
+                event.preventDefault();
+                if (event.dataTransfer.files[0]) processFile(event.dataTransfer.files[0]);
+              }}
+              onClick={() => fileInputRef.current?.click()}
+              className={`border-2 border-dashed border-themed rounded-xl p-8 text-center cursor-pointer transition-all flex flex-col items-center justify-center min-h-[250px] ${
+                file ? 'bg-tertiary border-accent' : 'hover:border-accent hover:bg-tertiary'
+              }`}
             >
-              <input 
-                type="file" 
+              <input
+                type="file"
                 ref={fileInputRef}
-                onChange={handleFileChange}
+                onChange={(event) => {
+                  if (event.target.files?.[0]) processFile(event.target.files[0]);
+                }}
                 accept="image/*,application/pdf"
                 className="hidden"
               />
-              
               {file && file.type === 'application/pdf' ? (
-                <div className="relative w-full h-full flex flex-col items-center justify-center p-4">
-                  <div className="w-16 h-16 bg-red-500/10 rounded-2xl flex items-center justify-center text-red-400 mb-3 border border-red-500/20">
-                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                  <p className="text-lg font-semibold text-slate-200 truncate max-w-xs">{file.name}</p>
-                  <p className="text-xs text-slate-500 mt-1">{(file.size / 1024 / 1024).toFixed(2)} MB • PDF Document</p>
-                  <p className="text-xs text-slate-400 mt-4">Click, drag, or paste another file to change</p>
+                <div className="flex flex-col items-center">
+                  <FileText className="w-12 h-12 text-accent mb-3" />
+                  <p className="font-semibold truncate max-w-[200px] text-primary">{file.name}</p>
+                  <p className="text-xs text-secondary mt-1">
+                    {(file.size / (1024 * 1024)).toFixed(2)} MB · PDF
+                  </p>
                 </div>
               ) : preview ? (
-                <div className="relative w-full h-full flex flex-col items-center">
-                  <img src={preview} alt="Document Preview" className="max-h-64 object-contain mb-4 rounded shadow-lg" />
-                  <p className="text-sm text-slate-400">Click, drag, or press Ctrl+V to change image</p>
-                </div>
+                <img src={preview} alt="Document preview" className="max-h-48 object-contain rounded shadow-sm" />
               ) : (
                 <>
-                  <div className="w-16 h-16 bg-slate-700 rounded-full flex items-center justify-center mb-4">
-                    <svg className="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                    </svg>
-                  </div>
-                  <p className="text-lg font-medium text-slate-200">Drag & drop your document here</p>
-                  <p className="text-sm text-slate-400 mt-1">Or press **Ctrl+V** to paste copied images</p>
-                  <p className="text-xs text-slate-500 mt-2">Supports JPG, PNG, PDF</p>
+                  <UploadCloud className="w-10 h-10 text-secondary mb-3" />
+                  <p className="font-medium text-primary">Click or drag a document</p>
+                  <p className="text-xs text-secondary mt-2">Images or PDFs. You can also paste (Ctrl+V).</p>
                 </>
               )}
             </div>
 
-            <div className="mt-6 flex flex-col sm:flex-row gap-4 items-center justify-between">
-              <button 
-                onClick={handleSubmit}
-                disabled={!file || isLoading}
-                className={`w-full sm:w-auto px-8 py-3 rounded-lg font-bold text-white transition-all duration-300 shadow-lg
-                  ${!file || isLoading 
-                    ? 'bg-slate-700 cursor-not-allowed opacity-70' 
-                    : 'bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-400 hover:to-purple-500 hover:shadow-purple-500/25 hover:-translate-y-0.5'}`}
-              >
-                {isLoading ? (
-                  <span className="flex items-center justify-center">
-                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Processing...
-                  </span>
-                ) : 'Extract Data'}
-              </button>
-
-              <a 
-                href="/sample_invoice.png" 
-                download
-                className="text-sm text-blue-400 hover:text-blue-300 transition-colors underline"
-              >
-                Download Sample Invoice
-              </a>
-            </div>
+            <button
+              onClick={handleSubmit}
+              disabled={!file || isLoading}
+              className={`w-full mt-6 py-3 rounded-lg font-bold text-white transition-all shadow ${
+                !file || isLoading
+                  ? 'bg-tertiary text-secondary cursor-not-allowed'
+                  : 'bg-accent hover-bg-accent hover:-translate-y-0.5'
+              }`}
+            >
+              {isLoading ? 'Extracting text and details…' : 'Extract text and details'}
+            </button>
 
             {error && (
-              <div className="mt-4 p-4 bg-red-500/10 border border-red-500/50 rounded-lg text-red-400 text-sm">
-                {error}
+              <div className="mt-4 p-3 bg-red-900/20 border border-red-500/30 rounded-lg text-red-500 text-sm flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>{error}</span>
               </div>
             )}
-          </div>
+          </section>
 
-          {/* Results Section */}
-          <div className="bg-slate-800 rounded-2xl p-6 shadow-xl border border-slate-700 flex flex-col">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-2xl font-semibold text-white flex items-center">
-                Extraction Results
-                {extractedData && <span className="ml-3 px-2 py-1 bg-green-500/20 text-green-400 text-xs rounded-full uppercase tracking-wider">Success</span>}
-              </h2>
-              {extractedData && (
-                <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-700 text-sm">
-                  <button
-                    onClick={() => setViewMode('structured')}
-                    className={`px-3 py-1.5 rounded-md transition-all ${viewMode === 'structured' ? 'bg-blue-500 text-white font-medium' : 'text-slate-400 hover:text-white'}`}
-                  >
-                    Structured
-                  </button>
-                  <button
-                    onClick={() => setViewMode('toon')}
-                    className={`px-3 py-1.5 rounded-md transition-all ${viewMode === 'toon' ? 'bg-blue-500 text-white font-medium' : 'text-slate-400 hover:text-white'}`}
-                  >
-                    Raw TOON
-                  </button>
+          <section className="lg:col-span-8 bg-secondary rounded-2xl p-6 border border-themed shadow-sm">
+            {!response ? (
+              <div className="min-h-[250px] flex flex-col items-center justify-center text-secondary text-center">
+                <FileText className="w-12 h-12 mb-3 opacity-20" />
+                <p className="text-lg font-medium">Your results will appear here</p>
+                <p className="text-sm mt-1">Upload a document to extract its text and key details.</p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-6">
+                <div>
+                  <h2 className="text-xl font-bold text-primary">Extracted details</h2>
+                  <p className="text-sm text-secondary mt-1">
+                    Extracted invoice fields with OCR-based tax and total checks.
+                  </p>
+                  <p className="text-xs text-secondary mt-1">
+                    Extraction method: {response.extraction_method === 'ocr_fallback'
+                      ? 'Local OCR fallback'
+                      : 'AI with OCR financial checks'}
+                  </p>
                 </div>
-              )}
-            </div>
-            <div className="flex-grow bg-slate-950 rounded-xl border border-slate-700 p-6 overflow-hidden flex flex-col relative min-h-[300px]">
-              {extractedData ? (
-                viewMode === 'structured' ? (
-                  <div className="space-y-4 overflow-y-auto max-h-[450px] custom-scrollbar pr-1">
-                    {/* Vendor Name Card */}
-                    <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex items-center justify-between hover:border-slate-700 transition-all">
-                      <div className="flex items-center space-x-4">
-                        <div className="w-10 h-10 rounded-lg bg-orange-500/10 flex items-center justify-center text-orange-400">
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                          </svg>
-                        </div>
-                        <div>
-                          <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Vendor Name</p>
-                          <p className="text-lg font-bold text-white mt-0.5">{extractedData?.vendor_name || 'N/A'}</p>
-                        </div>
-                      </div>
-                      <button 
-                        onClick={() => copyToClipboard(extractedData?.vendor_name)}
-                        className="p-2 text-slate-500 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
-                        title="Copy Vendor Name"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                      </button>
-                    </div>
 
-                    {/* Expense Category Card */}
-                    <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex items-center justify-between hover:border-slate-700 transition-all">
-                      <div className="flex items-center space-x-4">
-                        <div className="w-10 h-10 rounded-lg bg-pink-500/10 flex items-center justify-center text-pink-400">
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                        </div>
-                        <div>
-                          <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Expense Category</p>
-                          <p className="text-lg font-bold text-white mt-0.5">{extractedData?.expense_category || 'N/A'}</p>
-                        </div>
-                      </div>
-                      <button 
-                        onClick={() => copyToClipboard(extractedData?.expense_category)}
-                        className="p-2 text-slate-500 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
-                        title="Copy Expense Category"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                      </button>
-                    </div>
+                {response.extraction_warnings.length > 0 && (
+                  <ul className="space-y-1 text-sm text-yellow-600 dark:text-yellow-400 list-disc list-inside">
+                    {response.extraction_warnings.map((warning, index) => (
+                      <li key={index}>{warning}</li>
+                    ))}
+                  </ul>
+                )}
 
-                    {/* Invoice Number Card */}
-                    <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex items-center justify-between hover:border-slate-700 transition-all">
-                      <div className="flex items-center space-x-4">
-                        <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400">
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                        </div>
-                        <div>
-                          <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Invoice Number</p>
-                          <p className="text-lg font-bold text-white mt-0.5">{extractedData?.invoice_number || 'N/A'}</p>
-                        </div>
-                      </div>
-                      <button 
-                        onClick={() => copyToClipboard(extractedData?.invoice_number)}
-                        className="p-2 text-slate-500 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
-                        title="Copy Invoice Number"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                      </button>
-                    </div>
+                {response.extraction_method === 'ocr_fallback' && (
+                  <p className="text-sm text-secondary">
+                    The AI service did not return usable results. The app used readable invoice
+                    labels as a backup, so any field not recognized may need you to check the
+                    document and OCR text below.
+                  </p>
+                )}
 
-                    {/* Date Card */}
-                    <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex items-center justify-between hover:border-slate-700 transition-all">
-                      <div className="flex items-center space-x-4">
-                        <div className="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-400">
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                        </div>
-                        <div>
-                          <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Date</p>
-                          <p className="text-lg font-bold text-white mt-0.5">{extractedData?.date || 'N/A'}</p>
-                        </div>
-                      </div>
-                      <button 
-                        onClick={() => copyToClipboard(extractedData?.date)}
-                        className="p-2 text-slate-500 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
-                        title="Copy Date"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                      </button>
-                    </div>
-
-                    {/* Amount Card */}
-                    <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex items-center justify-between hover:border-slate-700 transition-all">
-                      <div className="flex items-center space-x-4">
-                        <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-400">
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                        </div>
-                        <div>
-                          <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Total Amount</p>
-                          <p className="text-xl font-extrabold text-emerald-400 mt-0.5">{extractedData?.total_amount && extractedData.total_amount !== "N/A" && !extractedData.total_amount.startsWith('$') ? `$${extractedData.total_amount}` : (extractedData?.total_amount || 'N/A')}</p>
-                        </div>
-                      </div>
-                      <button 
-                        onClick={() => copyToClipboard(extractedData?.total_amount)}
-                        className="p-2 text-slate-500 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
-                        title="Copy Total Amount"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                      </button>
-                    </div>
-
-                    {/* Full Extracted Text */}
-                    <div className="bg-slate-900/30 border border-slate-800 rounded-xl p-4 flex flex-col space-y-2">
-                      <div className="flex justify-between items-center">
-                        <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Full Extracted Text</p>
-                        <button 
-                          onClick={() => copyToClipboard(extractedData?.raw_text)}
-                          className="text-xs text-slate-400 hover:text-white flex items-center transition-colors"
-                        >
-                          <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                          Copy raw text
-                        </button>
-                      </div>
-                      <p className="text-sm text-slate-300 font-mono bg-slate-950/50 p-3 rounded-lg border border-slate-900 whitespace-pre-wrap max-h-64 overflow-y-auto custom-scrollbar">
-                        {extractedData?.raw_text || ''}
-                      </p>
-                    </div>
+                {response.invoices?.length ? (
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-primary">Invoice results by page</h3>
+                    <p className="text-sm text-secondary">
+                      Each page is checked separately. Printed amounts are preserved; calculations
+                      are shown alongside them for verification.
+                    </p>
+                    {response.invoices.map((invoice, index) => (
+                      <InvoiceResultCard key={`${invoice.page_number}-${index}`} invoice={invoice} index={index} />
+                    ))}
                   </div>
                 ) : (
-                  <div className="flex flex-col h-full">
-                    <div className="flex justify-between items-center mb-3 border-b border-slate-800 pb-2">
-                      <span className="text-xs text-slate-500 font-mono">Format: text/toon</span>
-                      <button 
-                        onClick={() => copyToClipboard(toonData)}
-                        className="text-xs text-slate-400 hover:text-white transition-colors flex items-center"
-                      >
-                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                        Copy TOON
-                      </button>
-                    </div>
-                    <pre className="text-blue-400 font-mono text-sm overflow-auto whitespace-pre-wrap flex-grow custom-scrollbar">
-                      {toonData}
-                    </pre>
-                  </div>
-                )
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center text-slate-600">
-                  <svg className="w-12 h-12 mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  <p>Results will appear here in structured format</p>
+                  <>
+                    <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {Object.entries(fieldLabels).map(([key, label]) => (
+                        <div key={key} className="bg-primary border border-themed rounded-xl p-4">
+                          <dt className="text-xs font-bold text-secondary uppercase tracking-wider mb-1">
+                            {label}
+                          </dt>
+                          <dd className="text-lg font-semibold text-primary break-words">
+                            {response.data[key] && response.data[key] !== 'N/A'
+                              ? response.data[key]
+                              : 'Not found in readable text'}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                    <TaxCheckSection gstCheck={response.gst_check} />
+                  </>
+                )}
+
+                <div>
+                  <h3 className="text-lg font-semibold text-primary mb-2">Full extracted text</h3>
+                  <textarea
+                    aria-label="Full extracted text"
+                    readOnly
+                    value={response.extracted_text.replace(
+                      /^\s*===\s*PAGE\s+(\d+)\s*===\s*$/gim,
+                      'Page $1',
+                    )}
+                    rows={12}
+                    className="w-full resize-y rounded-xl border border-themed bg-primary p-4 font-mono text-sm text-primary"
+                  />
                 </div>
-              )}
-            </div>
-          </div>
-        </div>
+              </div>
+            )}
+          </section>
+        </main>
       </div>
     </div>
+  );
+}
+
+function CheckValue({ label, value }) {
+  return (
+    <div className="bg-secondary rounded-lg p-3">
+      <p className="text-xs font-bold text-secondary uppercase tracking-wider">{label}</p>
+      <p className="mt-1 font-semibold text-primary capitalize">
+        {typeof value === 'string' ? value.replace(/_/g, ' ') : value || 'N/A'}
+      </p>
+    </div>
+  );
+}
+
+function InvoiceResultCard({ invoice, index }) {
+  const { data, gst_check: gstCheck } = invoice;
+  const detailFields = [
+    ['Invoice number', data.invoice_number],
+    ['Invoice date', data.date],
+    ['Expense category', data.expense_category],
+    ['Net amount before tax', data.taxable_amount],
+    ['Discount', data.discount_amount],
+    ['Additional charges', data.additional_charges],
+    ['Invoice total as printed', gstCheck.declared_total],
+  ];
+
+  return (
+    <article className="bg-primary border border-themed rounded-xl p-4">
+      <h4 className="text-base font-bold text-primary">
+        Invoice {index + 1} · Page {invoice.page_number}
+      </h4>
+      <p className="text-sm text-secondary mt-1">
+        {data.vendor_name !== 'N/A' ? data.vendor_name : 'Vendor not found in readable text'}
+      </p>
+      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+        {detailFields.map(([label, value]) => (
+          <div key={label} className="bg-secondary rounded-lg p-3">
+            <dt className="text-xs font-bold text-secondary uppercase">{label}</dt>
+            <dd className="mt-1 font-semibold text-primary">{value && value !== 'N/A' ? value : 'Not found'}</dd>
+          </div>
+        ))}
+      </dl>
+
+      <section className="mt-4 border-t border-themed pt-4">
+        <h5 className="font-semibold text-primary">Tax and total verification</h5>
+        {gstCheck.taxes.length ? (
+          <div className="mt-2 overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="text-xs text-secondary uppercase border-b border-themed">
+                <tr>
+                  <th className="py-2 pr-3">Tax</th>
+                  <th className="py-2 pr-3">Rate</th>
+                  <th className="py-2 pr-3">Printed</th>
+                  <th className="py-2 pr-3">Calculated</th>
+                  <th className="py-2 pr-3">Difference</th>
+                  <th className="py-2">Check</th>
+                </tr>
+              </thead>
+              <tbody>
+                {gstCheck.taxes.map((tax, taxIndex) => (
+                  <tr key={`${tax.tax_type}-${taxIndex}`} className="border-b border-themed last:border-0">
+                    <td className="py-2 pr-3 font-medium text-primary">{tax.tax_type}</td>
+                    <td className="py-2 pr-3 text-primary">{tax.rate}</td>
+                    <td className="py-2 pr-3 text-primary">{tax.declared_amount}</td>
+                    <td className="py-2 pr-3 text-primary">{tax.calculated_amount}</td>
+                    <td className="py-2 pr-3 text-primary">{tax.difference}</td>
+                    <td className="py-2 text-primary">{tax.status.replace(/_/g, ' ')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="mt-2 text-sm text-secondary">No tax lines were found in this invoice.</p>
+        )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+          <CheckValue label="GST shown" value={gstCheck.gst_total} />
+          <CheckValue label="Other tax shown" value={gstCheck.other_tax_total} />
+          <CheckValue label="GST recalculated" value={gstCheck.calculated_gst_total} />
+          <CheckValue label="Other tax recalculated" value={gstCheck.calculated_other_tax_total} />
+          <CheckValue label="Total using printed tax" value={gstCheck.calculated_total} />
+          <CheckValue label="Printed minus shown-tax total" value={gstCheck.total_difference} />
+          <CheckValue label="Recalculated payable total" value={gstCheck.recalculated_total} />
+          <CheckValue label="Printed minus recalculated" value={gstCheck.recalculated_difference} />
+          <CheckValue label="Recalculated total check" value={gstCheck.recalculated_total_status} />
+          <CheckValue label="Tax check" value={gstCheck.tax_status} />
+          <CheckValue label="Printed component check" value={gstCheck.total_status} />
+        </div>
+        <p className="mt-3 text-xs text-secondary">
+          Shown-tax total = net amount + printed tax amounts + additional charges.
+          Recalculated total uses the tax amounts recalculated from each rate.
+        </p>
+        {gstCheck.warnings.length > 0 && (
+          <ul className="mt-3 space-y-1 text-sm text-yellow-600 dark:text-yellow-400 list-disc list-inside">
+            {gstCheck.warnings.map((warning, warningIndex) => <li key={warningIndex}>{warning}</li>)}
+          </ul>
+        )}
+      </section>
+    </article>
+  );
+}
+
+function TaxCheckSection({ gstCheck }) {
+  return (
+    <section className="bg-primary border border-themed rounded-xl p-4">
+      <h3 className="text-lg font-semibold text-primary">Tax and total check</h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+        <CheckValue label="GST check" value={gstCheck.tax_status} />
+        <CheckValue label="Invoice total check" value={gstCheck.total_status} />
+        <CheckValue label="GST shown" value={gstCheck.gst_total} />
+        <CheckValue label="Other taxes shown" value={gstCheck.other_tax_total} />
+        <CheckValue label="Invoice-declared total" value={gstCheck.declared_total} />
+        <CheckValue label="Calculated total" value={gstCheck.calculated_total} />
+        <CheckValue label="Declared minus calculated" value={gstCheck.total_difference} />
+      </div>
+      {gstCheck.warnings.length > 0 && (
+        <ul className="mt-4 space-y-1 text-sm text-yellow-600 dark:text-yellow-400 list-disc list-inside">
+          {gstCheck.warnings.map((warning, index) => <li key={index}>{warning}</li>)}
+        </ul>
+      )}
+    </section>
   );
 }
 
